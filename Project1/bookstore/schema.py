@@ -3,6 +3,15 @@ from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 from .models import Author, Book
 
+class AuthorInput(graphene.InputObjectType):
+    name = graphene.String(required = True)
+
+class BookInput(graphene.InputObjectType):
+    title = graphene.String(required = True)
+    pages = graphene.Int(required = True)
+    year = graphene.Int(required = True)
+    author = graphene.InputField(AuthorInput)
+
 class AuthorNode(DjangoObjectType):
     class Meta:
         model = Author
@@ -20,21 +29,44 @@ class BookNode(DjangoObjectType):
         ]
         interfaces = (graphene.relay.Node,)
 
-class CreateAuthor(graphene.relay.ClientIDMutation):
+class CreateAuthor(graphene.Mutation):
+    class Arguments:
+        author_data = AuthorInput(required = True)
+    
     author = graphene.Field(AuthorNode)
 
-    class Input:
-        name = graphene.String()
-
-    @classmethod
-    def mutate_and_get_payload(self,root,info,**input):
-        author = Author(name = input.get('name'))
+    @staticmethod
+    def mutate(root, info, author_data=None):
+        author = Author(name = author_data.name)
         author.save()
 
         return CreateAuthor(author=author)
 
+class CreateBook(graphene.Mutation):
+    class Arguments:
+        book_data = BookInput(required = True)
+    
+    book = graphene.Field(BookNode)
+
+    @staticmethod
+    def mutate(root, info, book_data=None):
+        try:
+            author = Author.objects.get(name=book_data.author.name)
+        except:
+            author = Author.objects.create(name=book_data.author.name)
+
+        book = Book.objects.create(
+            title = book_data.title,
+            pages = book_data.pages,
+            year = book_data.year,
+            author = author
+            )
+            
+        return CreateBook(book = book)
+
 class Mutation(object):
-    input_author = CreateAuthor.Field()
+    create_author = CreateAuthor.Field()
+    create_book = CreateBook.Field()
 
 class Query(object):
     author = graphene.relay.Node.Field(AuthorNode)
